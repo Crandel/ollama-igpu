@@ -1,17 +1,17 @@
 # Maintainer: pika02
 # Contributor: Wilken Gottwalt <wilken dot gottwalt at posteo dot net>
 
-pkgname=ollama-for-amd-git
-pkgver=0.9.0.git+4cd0c734
+pkgname=ollama-igpu-git
+pkgver=0.9.1.git+06217e84
 pkgrel=1
 pkgdesc='Create, run and share large language models (LLMs) with ROCm, patched for AMD GPUs'
 arch=(aarch64 x86_64)
-url='git@github.com:Crandel/ollama-igpu'
+url='https://github.com/Crandel/ollama-igpu'
 license=(MIT)
 provides=(ollama)
 conflicts=(ollama)
-depends=(gcc-libs)
-makedepends=(git gcc-libs "go>=1.23")
+depends=(gcc-libs hip-runtime-amd hipblas)
+makedepends=(git gcc-libs cmake "go>=1.23")
 source=(ollama::git+$url#branch=AMD_APU_GTT_memory
         ollama.service
         sysusers.conf

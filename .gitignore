@@ -14,3 +14,7 @@ __debug_bin*
 llama/build
 llama/vendor
 /ollama
+aur/src
+aur/ollama
+aur/pkg
+aur/*.pkg*
