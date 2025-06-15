@@ -1,0 +1,34 @@
+pkgbase = ollama-igpu
+	pkgdesc = Create, run and share large language models (LLMs)
+	pkgver = 0.9.1
+	pkgrel = 1
+	url = https://github.com/Crandel/ollama-igpu
+	arch = x86_64
+	license = MIT
+	makedepends = cmake
+	makedepends = ninja
+	makedepends = git
+	makedepends = go
+	makedepends = hipblas
+	makedepends = cuda
+	makedepends = clblast
+	options = !lto
+	source = git+https://github.com/Crandel/ollama-igpu#branch=AMD_APU_GTT_memory
+	source = ollama-ld.conf
+	source = ollama.service
+	source = sysusers.conf
+	source = tmpfiles.d
+pkgname = ollama-igpu
+
+pkgname = ollama-igpu-rocm
+	pkgdesc = Create, run and share large language models (LLMs) with ROCm
+	depends = ollama-igpu
+	depends = hipblas
+
+pkgname = ollama-igpu-cuda
+	pkgdesc = Create, run and share large language models (LLMs) with CUDA
+	depends = ollama-igpu
+	depends = cuda
+
+pkgname = ollama-igpu-docs
+	pkgdesc = Documentation for Ollama

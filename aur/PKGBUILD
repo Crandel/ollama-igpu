@@ -1,66 +1,88 @@
 # Maintainer: pika02
 # Contributor: Wilken Gottwalt <wilken dot gottwalt at posteo dot net>
 
-pkgname=ollama-igpu-git
-pkgver=0.9.1.git+06217e84
+pkgbase=ollama-igpu
+pkgname=(ollama-igpu ollama-igpu-rocm ollama-igpu-cuda ollama-igpu-docs)
+pkgver=0.9.1
 pkgrel=1
 pkgdesc='Create, run and share large language models (LLMs) with ROCm, patched for AMD GPUs'
-arch=(aarch64 x86_64)
+arch=(x86_64)
 url='https://github.com/Crandel/ollama-igpu'
 license=(MIT)
-provides=(ollama)
-conflicts=(ollama)
-depends=(gcc-libs hip-runtime-amd hipblas)
-makedepends=(git gcc-libs cmake "go>=1.23")
+options=('!lto')
+makedepends=(cmake ninja git go hipblas cuda clblast)
 source=(ollama::git+$url#branch=AMD_APU_GTT_memory
+        ollama-ld.conf
         ollama.service
         sysusers.conf
         tmpfiles.d)
 b2sums=('SKIP'
-        '45ae4a8607a3e3d3f6b72c13485eed2a5d6e8f72664cd209e4e0c0befe825c7c56f27d45a1f799e3c6c18a7acbe7120ac55bf10cf48827b107721b4fbc0b99e2'
-        '3aabf135c4f18e1ad745ae8800db782b25b15305dfeaaa031b4501408ab7e7d01f66e8ebb5be59fc813cfbff6788d08d2e48dcf24ecc480a40ec9db8dbce9fec'
+        'a1cbf7a65d816ba8014623a80c0b2f96d6f95218791acc9ecc4c495707b1e99d6af292bce3534febb36b88c4a4bc766020deac065e49654fc253d6addae9170b'
+        'c2bae734b7a51bcc14c83b0a9d4f3356541619036e0149a863b16ec73125a4d87f0f4306afcf77d139dcd9a06cdfa34a9903b9fd7fc96734fdefd333f97d38b7'
+        '68622ac2e20c1d4f9741c57d2567695ec7b5204ab43356d164483cd3bc9da79fad72489bb33c8a17c2e5cb3b142353ed5f466ce857b0f46965426d16fb388632'
         'e8f2b19e2474f30a4f984b45787950012668bf0acb5ad1ebb25cd9776925ab4a6aa927f8131ed53e35b1c71b32c504c700fe5b5145ecd25c7a8284373bb951ed')
 
-pkgver() {
-  cd ollama
-  local _tag="$(git describe --tags --abbrev=0)"
-  local _hash="$(git rev-parse --short HEAD)"
-  _tag="${_tag%-*}"
-  echo "${_tag##v}.git+${_hash}"
-}
-
-prepare() {
-  cd ollama
-
-#   patch -Np1 -i ${srcdir}/0001-llama-mmap-fix-missing-include.patch
-  sed -i 's/check_language(CUDA)//g' CMakeLists.txt
-  sed -i 's/check_language(HIP)//g' CMakeLists.txt
-}
-
 build() {
-  export CMAKE_CUDA_COMPILER=/tmp
-  export CMAKE_HIP_COMPILER=/tmp
+  export CGO_CPPFLAGS="${CPPFLAGS}"
+  export CGO_CFLAGS="${CFLAGS}"
+  export CGO_CXXFLAGS="${CXXFLAGS}"
+  export CGO_LDFLAGS="${LDFLAGS}"
+  export GOPATH="${srcdir}"
+  export GOFLAGS="-buildmode=pie -mod=readonly -modcacherw '-ldflags=-linkmode=external -compressdwarf=false -X=github.com/ollama/ollama/version.Version=$pkgver -X=github.com/ollama/ollama/server.mode=release'"
 
   cd ollama
 
-  cmake -B build
-  cmake --build build --config Release
+  # Remove the runtime dependencies from installation so CMake doesn't install
+  # lots of system dependencies into the target path.
+  sed -i 's/PRE_INCLUDE_REGEXES.*/PRE_INCLUDE_REGEXES = ""/' CMakeLists.txt
+
+  # Sync GPU targets from CMakePresets.json
+  cmake -B build -G Ninja \
+    -DCMAKE_CUDA_ARCHITECTURES="50;52;53;60;61;62;70;72;75;80;86;87;89;90;90a" \
+    -DGPU_TARGETS="gfx900;gfx940;gfx941;gfx942;gfx1010;gfx1012;gfx1030;gfx1100;gfx1101;gfx1102;gfx1200;gfx1201;gfx906:xnack-;gfx908:xnack-;gfx90a:xnack+;gfx90a:xnack-" \
+    -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build build
   go build .
 }
 
-package() {
-  install -dm755 ${pkgdir}/var/lib/ollama
-  install -dm755 ${pkgdir}/usr/{bin,lib/ollama}
-  install -Dm644 ollama/LICENSE ${pkgdir}/usr/share/licenses/ollama/LICENSE
-  install -Dm755 ollama/ollama ${pkgdir}/usr/bin/ollama
-  if [ "$CARCH" = "aarch64" ]; then
-    install -Dm755 ollama/build/lib/ollama/*base* ${pkgdir}/usr/lib/ollama
-  else
-    install -Dm755 ollama/build/lib/ollama/* ${pkgdir}/usr/lib/ollama
-  fi
-  install -Dm644 ollama.service ${pkgdir}/usr/lib/systemd/system/ollama.service
-  install -Dm644 sysusers.conf ${pkgdir}/usr/lib/sysusers.d/ollama.conf
-  install -Dm644 tmpfiles.d ${pkgdir}/usr/lib/tmpfiles.d/ollama.conf
+check() {
+  ollama/ollama --version > /dev/null
+  cd ollama
+  go test .
+}
 
-  ln -s /var/lib/ollama ${pkgdir}/usr/share/ollama
+package_ollama-igpu() {
+  DESTDIR="$pkgdir" cmake --install ollama/build --component CPU
+
+  install -Dm755 ollama/ollama "$pkgdir/usr/bin/ollama"
+  install -dm755 "$pkgdir/var/lib/ollama"
+  install -Dm644 ollama.service "$pkgdir/usr/lib/systemd/system/ollama.service"
+  install -Dm644 sysusers.conf "$pkgdir/usr/lib/sysusers.d/ollama.conf"
+  install -Dm644 tmpfiles.d "$pkgdir/usr/lib/tmpfiles.d/ollama.conf"
+  install -Dm644 ollama/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+  ln -s /var/lib/ollama "$pkgdir/usr/share/ollama"
+}
+
+package_ollama-igpu-rocm() {
+  pkgdesc='Create, run and share large language models (LLMs) with ROCm'
+  depends+=(ollama-igpu hipblas)
+
+  DESTDIR="$pkgdir" cmake --install ollama/build --component HIP
+  rm -rf "$pkgdir"/usr/lib/ollama/rocm/rocblas/library
+}
+
+package_ollama-igpu-cuda() {
+  pkgdesc='Create, run and share large language models (LLMs) with CUDA'
+  depends+=(ollama-igpu cuda)
+
+  DESTDIR="$pkgdir" cmake --install ollama/build --component CUDA
+}
+
+package_ollama-igpu-docs() {
+  pkgdesc='Documentation for Ollama'
+
+  install -d "$pkgdir/usr/share/doc"
+  cp -r ollama/docs "$pkgdir/usr/share/doc/ollama"
+  install -Dm644 ollama/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
